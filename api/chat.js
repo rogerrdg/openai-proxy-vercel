@@ -1,65 +1,29 @@
+import { OpenAI } from 'openai';
 
-const https = require('https');
-const dotenv = require('dotenv');
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-dotenv.config();
-
-const apiKey = process.env.OPENAI_API_KEY;
-
-module.exports = (req, res) => {
-  let body = '';
-  req.on('data', chunk => {
-    body += chunk;
-  });
-
-  req.on('end', () => {
-    const requestData = JSON.parse(body);
-
-    const data = JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: requestData.messages,
-      stream: true,
-      max_tokens: 1500,
-      temperature: 0.7
-    });
-
-    const options = {
-      hostname: 'api.openai.com',
-      path: '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Content-Length': data.length
-      }
-    };
-
-    const openaiReq = https.request(options, openaiRes => {
-      console.log('Status da OpenAI:', openaiRes.statusCode);
-
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      });
-
-      openaiRes.on('data', chunk => {
-        console.log(chunk.toString());
-        res.write(chunk);
-      });
-
-      openaiRes.on('end', () => {
-        res.end();
-      });
-    });
-
-    openaiReq.on('error', error => {
-      console.error(error);
-      res.writeHead(500);
-      res.end('Internal Server Error');
-    });
-
-    openaiReq.write(data);
-    openaiReq.end();
-  });
+export const config = {
+  runtime: 'edge',
 };
+
+export default async function handler(req) {
+  const { messages } = await req.json();
+
+  if (!messages || !Array.isArray(messages)) {
+    return new Response('Invalid messages format', { status: 400 });
+  }
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: messages, // <-- Aqui garantimos que TODO o histórico é enviado!
+    stream: true,
+  });
+
+  return new Response(response.body, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+    },
+  });
+}
